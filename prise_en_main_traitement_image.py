@@ -18,7 +18,7 @@ def calculate_2dft(input):
 
 
 # ouverture du fichier
-image_filename = "image1.png"
+image_filename = "image4.png"
 
 
 # Processing de l'image
@@ -28,31 +28,24 @@ ft = calculate_2dft(image)
 
 # on essaye d'appliquer un filtre passe-haut pour effacer les variations lentes
 U = np.fft.fftshift(np.fft.fftfreq(ft.shape[0]))
-print("U", U)
 V = np.fft.fftshift(np.fft.fftfreq(ft.shape[1]))
-r_u = (np.abs(U) >= 0.05).reshape(U.size, 1)
-r_v = (np.abs(V) >= 0.05).reshape(1, V.size)
+r_u = (np.abs(U) >= 0.05).reshape(U.size, 1)            # on souhaite conserver uniquement les frequences spatiales >= 0.05 (peut etre modifié selon les besoins)
+r_v = (np.abs(V) >= 0.05).reshape(1, V.size)            # idem
 filtre = np.array(np.meshgrid(r_v, r_u))
-filtre = np.logical_or(filtre[0, :, :], filtre[1, :, :])
-# filtre = np.logical_or(filtre[:, :, 0], filtre[:, :, 1])
-print(filtre.shape)
-print(ft.shape)
-ft = ft*filtre
-print(filtre)
+filtre = np.logical_or(filtre[0, :, :], filtre[1, :, :])    # création du filtre
+ft = ft*filtre                                          # application du filtre
 
-
-index = np.transpose(np.where(np.abs(ft) == np.max(np.abs(ft))))
+# on trouve automatiquement les pics dans la FFT2
+index = np.transpose(np.where(np.abs(ft) == np.max(np.abs(ft))))  # attention: risque d'erreur ici, si le contraste n'est pas assez bon
 phase = np.angle(ft[np.where(np.abs(ft) == np.max(np.abs(ft)))])
-print("phase", phase)
-u = U[499]  # il faut encore trouver automatiquement ces pics!
-v = V[885]  # idem
-print(u, v)
-
+u = U[index[0, 0]]
+v = V[index[0, 1]]
+frequence_ortho = np.sqrt(u**2 + v**2)
 
 # reconstruction des interferences
-ft_reco = np.zeros((1080, 1440))
-ft_reco[499, 885] = ft[499, 885]
-ft_reco[581, 555] = ft[581, 555]
+ft_reco = np.zeros(ft.shape)
+ft_reco[index[:, 0], index[:, 1]] = ft[index[:, 0], index[:, 1]]
+
 
 
 # plotting et affichage graphique
@@ -67,29 +60,17 @@ ax1.set_ylim([800, 400])
 
 plt.set_cmap("Oranges")
 
-# im = ax2.imshow(np.log(abs(ft)), extent=(U[0], U[-1], V[-1], V[0]))
-print(ft)
 im = ax2.imshow(np.log(abs(ft)), extent=(U[0], U[-1], V[-1], V[0]))
 ax2.scatter(V[index[:, 1]], U[index[:, 0]], marker = "x")
 fig.colorbar(im)
-# print(np.max(np.log(abs(ft))))
-# print(np.where(np.log(abs(ft)) >= 8))
-# print(ft[499, 885])
-# print(ft[581, 555])
-# print(ft.shape)
 ax2.set_title("Fft2")
 
-
-
-
-
-# Calculate the inverse Fourier transform of 
-# the Fourier transform
-
+# reconstruction et affichage des interférences (pour vérifier la cohérence des résultats)
 ift = np.fft.ifftshift(ft_reco)
 ift = np.fft.ifft2(ift)
 ift = np.fft.fftshift(ift)
 ift = ift.real  # Take only the real part
+
 plt.subplot(133)
 plt.imshow(ift)
 plt.title("Interférences extraites")
@@ -99,6 +80,6 @@ plt.xlim([750, 1000])
 plt.ylim([800, 400])
 
 
-fig.suptitle(f"Extraction des informations de l'image: {image_filename}\nFréquence spatiale: {np.sqrt(u**2 + v**2):.2E} et phase spatiale: {phase[0]:.2}")
+fig.suptitle(f"Extraction des informations de l'image: {image_filename}\nFréquence spatiale: {frequence_ortho:.2E} et phase spatiale: {phase[0]:.2}")
 
 plt.show()
