@@ -6,6 +6,10 @@ programme permettant la configuration de l'extraction de la phase via interféro
     par un programme maitre
 """
 
+
+# une petite variable de test:
+use_webcam = False
+
 # importation des modules
 print("[INFO] Importation des modules")
 import sys
@@ -39,7 +43,8 @@ class MainWindow(qt.QMainWindow):
         self.cam.set_exposure(10E-3)
         print(f"[INFO] Caméra {ad_serial[0]} connectée")
 
-        self.cap = cv2.VideoCapture(0)
+        if use_webcam:
+            self.cap = cv2.VideoCapture(0)
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update_frame)
         self.timer.start(30) 
@@ -59,11 +64,10 @@ class MainWindow(qt.QMainWindow):
         self.centralWidget.setLayout(grid)
 
         # Create a graphics view widget to display the image
-        self.graphicsView = pg.ImageView()
-        self.graphicsView.ui.roiBtn.hide()
-        self.graphicsView.ui.menuBtn.hide()
-        self.graphicsView.ui.histogram.hide()
-        grid.addWidget(self.graphicsView, 0, 0)
+        self.plotView = pg.PlotWidget()
+        self.graphicsView = pg.ImageItem()
+        self.plotView.addItem(self.graphicsView)
+        grid.addWidget(self.plotView, 0, 0)
 
         # Create a graphics view widget to display the image
         self.graphicsView2 = pg.ImageView()
@@ -72,16 +76,28 @@ class MainWindow(qt.QMainWindow):
         self.graphicsView2.ui.histogram.hide()
         grid.addWidget(self.graphicsView2, 0, 1)
 
+        
+        # création de la ROI
+        self.roi = pg.LineROI([0, 60], [20, 80], width=5, pen="r")
+        self.plotView.addItem(self.roi)
+        self.roi.sigRegionChanged.connect(self.update_roi)
 
+
+    
+    def update_roi(self):
+        print("updating roi")
+        image_roi = self.roi.getArrayRegion(self.current_frame, self.graphicsView)
+        self.graphicsView2.setImage(image_roi)
+        self.graphicsView2.autoRange()
 
 
     def update_frame(self):
         print("begin update")
-        frame = self.cam.snap()
-        self.graphicsView.setImage(np.rot90(frame))
+        self.current_frame = self.cam.snap()
+        self.graphicsView.setImage(np.rot90(self.current_frame))
         print("end update")
 
-        if True:
+        if use_webcam:
             ret, frame = self.cap.read()
             if ret:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # OpenCV uses BGR, PyQtGraph uses RGB
@@ -90,7 +106,9 @@ class MainWindow(qt.QMainWindow):
 
 
     def closeEvent(self, event):
-        self.cap.release()
+        self.cam.close()
+        if use_webcam:
+            self.cap.release()
         event.accept()
 
 if __name__ == "__main__":
