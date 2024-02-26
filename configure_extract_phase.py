@@ -39,7 +39,7 @@ class MainWindow(qt.QMainWindow):
         self.cam.set_exposure(10E-3)
         print(f"[INFO] Caméra {ad_serial[0]} connectée")
 
-        # self.cap = cv2.VideoCapture(0)
+        self.cap = cv2.VideoCapture(0)
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update_frame)
         self.timer.start(30) 
@@ -65,21 +65,28 @@ class MainWindow(qt.QMainWindow):
         self.graphicsView.ui.histogram.hide()
         grid.addWidget(self.graphicsView, 0, 0)
 
+        # Create a graphics view widget to display the image
+        self.graphicsView2 = pg.ImageView()
+        self.graphicsView2.ui.roiBtn.hide()
+        self.graphicsView2.ui.menuBtn.hide()
+        self.graphicsView2.ui.histogram.hide()
+        grid.addWidget(self.graphicsView2, 0, 1)
+
 
 
 
     def update_frame(self):
         print("begin update")
         frame = self.cam.snap()
-        self.graphicsView.setImage(frame)
+        self.graphicsView.setImage(np.rot90(frame))
         print("end update")
 
-    # def update_frame(self):
-    #     print("updating")
-    #     ret, frame = self.cap.read()
-    #     if ret:
-    #         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # OpenCV uses BGR, PyQtGraph uses RGB
-    #         self.graphicsView.setImage(frame)
+        if True:
+            ret, frame = self.cap.read()
+            if ret:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # OpenCV uses BGR, PyQtGraph uses RGB
+                self.graphicsView2.setImage(np.rot90(frame))
+
 
 
     def closeEvent(self, event):
