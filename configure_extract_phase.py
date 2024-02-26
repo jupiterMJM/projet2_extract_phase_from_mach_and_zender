@@ -67,6 +67,7 @@ class MainWindow(qt.QMainWindow):
         self.plotView = pg.PlotWidget()
         self.graphicsView = pg.ImageItem()
         self.plotView.addItem(self.graphicsView)
+        self.plotView.setAspectLocked()
         grid.addWidget(self.plotView, 0, 0)
 
         # Create a graphics view widget to display the image
@@ -74,7 +75,7 @@ class MainWindow(qt.QMainWindow):
         self.graphicsView2.ui.roiBtn.hide()
         self.graphicsView2.ui.menuBtn.hide()
         self.graphicsView2.ui.histogram.hide()
-        grid.addWidget(self.graphicsView2, 0, 1)
+        grid.addWidget(self.graphicsView2, 1, 0)
 
         
         # création de la ROI
@@ -82,19 +83,47 @@ class MainWindow(qt.QMainWindow):
         self.plotView.addItem(self.roi)
         self.roi.sigRegionChanged.connect(self.update_roi)
 
+        # plotting de la "somme"/moyenne de l'image
+        self.plotView2 = pg.PlotWidget()
+        grid.addWidget(self.plotView2, 0, 1)
 
+        # plotting du spectre de la fft
+        self.plotView3 = pg.PlotWidget()
+        grid.addWidget(self.plotView3, 1, 1)
+
+
+    def update_graph_spectre_fft(self, image_sommee):
+        # on fait d'abord la fft
+        freq = np.fft.fftfreq(image_sommee.shape[0])
+        sp = np.fft.fft(image_sommee)[freq >= 0]
+        freq = freq[freq >= 0]
+        
+        print("sp", sp.shape, "freq", freq.shape)
+        self.plotView3.clear()
+        self.plotView3.plot(freq, np.abs(sp))
+
+
+    def update_graph_sum(self, image_roi):
+        print(image_roi.shape)
+        sommation = np.sum(image_roi, axis=1)
+        print(sommation.shape)
+        self.plotView2.clear()
+        self.plotView2.plot(sommation)
+        self.update_graph_spectre_fft(sommation)
     
     def update_roi(self):
         print("updating roi")
-        image_roi = self.roi.getArrayRegion(self.current_frame, self.graphicsView)
+        image_roi = np.rot90(self.roi.getArrayRegion(self.current_frame, self.graphicsView))
         self.graphicsView2.setImage(image_roi)
         self.graphicsView2.autoRange()
+        self.update_graph_sum(image_roi)
 
 
     def update_frame(self):
         print("begin update")
         self.current_frame = self.cam.snap()
         self.graphicsView.setImage(np.rot90(self.current_frame))
+        self.update_roi()
         print("end update")
 
         if use_webcam:
