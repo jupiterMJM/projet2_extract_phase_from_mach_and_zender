@@ -4,13 +4,15 @@ programme permettant la configuration de l'extraction de la phase via interféro
 :date: 26/02
 :comment: ce programme a pour but d'etre utilisé en production; mais n'est pas censé être appelé
     par un programme maitre
-TODO: mieux gérer less fichiers hdf5 - en particulier ne pas tout charger en mémoire comme un bourrin
+TODO: mieux gérer les fichiers hdf5 - en particulier ne pas tout charger en mémoire comme un bourrin
 TODO: régler le problème de la caméra zelux
 TODO: enregistrer les paramètres de la ROI
 TODO: utiliser la ROI pour accélérer les prises des photos de la zelux
 TODO: placer un axe de lecture de la phase - et ajouter le graphe de la phase
 TODO: utiliser les docker (cf prg de rafael)
 TODO: configurer les boutons de lancement d'enregistrement, d'arret et de sauvegarde
+TODO: affichage d'un label indiquant la fréquence choisie par le cursor (et le domaine de couleur correspondant, approche un peu théorique à faire)
+TODO: commenter les fonctions!!!!
 """
 
 
@@ -44,6 +46,7 @@ class MainWindow(qt.QMainWindow):
         self.setupUI()
         self.take_photo_cam = True
         self.what_to_use_for_picture = "camera"         # choisir entre camera et video
+        self.phase_vector = []
         # Initialize webcam
         print("[INFO] Recherche des caméras disponibles")
         ad_serial = Thorlabs.list_cameras_tlcam()  # affiche normalement la liste des caméras connectées
@@ -98,7 +101,12 @@ class MainWindow(qt.QMainWindow):
         self.plotView.setAspectLocked()
         grid.addWidget(self.plotView, 0, 0)
 
-        # Create a graphics view widget to display the image
+        # création de la ROI
+        self.roi = pg.LineROI([0, 60], [20, 80], width=5, pen="r")
+        self.plotView.addItem(self.roi)
+        self.roi.sigRegionChanged.connect(self.update_roi)
+
+        # GUI pour l'affichage de la ROI
         self.graphicsView2 = pg.ImageView()
         self.graphicsView2.ui.roiBtn.hide()
         self.graphicsView2.ui.menuBtn.hide()
@@ -106,18 +114,21 @@ class MainWindow(qt.QMainWindow):
         grid.addWidget(self.graphicsView2, 1, 0)
 
         
-        # création de la ROI
-        self.roi = pg.LineROI([0, 60], [20, 80], width=5, pen="r")
-        self.plotView.addItem(self.roi)
-        self.roi.sigRegionChanged.connect(self.update_roi)
-
         # plotting de la "somme"/moyenne de l'image
         self.plotView2 = pg.PlotWidget()
-        grid.addWidget(self.plotView2, 0, 1)
+        grid.addWidget(self.plotView2, 2, 0)
 
         # plotting du spectre de la fft
         self.plotView3 = pg.PlotWidget()
-        grid.addWidget(self.plotView3, 1, 1)
+        self.plotFourier = pg.PlotDataItem()
+        self.cursor = pg.InfiniteLine(pos=0,angle=90,movable=True,pen="g")           # on utilise ce pic pour lire la phase
+        self.plotView3.addItem(self.cursor)
+        self.plotView3.addItem(self.plotFourier)
+        grid.addWidget(self.plotView3, 0, 1)
+
+        # plotting du graphe de la phase
+        self.plotView4 = pg.PlotWidget()
+        grid.addWidget(self.plotView4, 1, 1)
 
     def config_video(self):
         print("[INFO] Sélection d'une vidéo ou d'un fichier h5 comme outil de travail")
@@ -141,41 +152,6 @@ class MainWindow(qt.QMainWindow):
         
         self.take_photo_cam = True
         
-
-    def update_graph_spectre_fft(self, image_sommee):
-        # on fait d'abord la fft
-        freq = np.fft.fftfreq(image_sommee.shape[0])
-        sp = np.fft.fft(image_sommee)[freq >= 0]
-        freq = freq[freq >= 0]
-        
-        # print("sp", sp.shape, "freq", freq.shape)
-        self.plotView3.clear()
-        self.plotView3.plot(freq, np.abs(sp))
-
-
-    def update_graph_sum(self, image_roi):
-        # print(image_roi.shape)
-        if len(image_roi.shape) == 3: # image en couleur
-            sommation = np.sum(image_roi[:, :, 0], axis=1)
-        else:
-            sommation = np.sum(image_roi, axis=1)
-        # print(sommation.shape)
-        self.plotView2.clear()
-        self.plotView2.plot(sommation)
-        self.update_graph_spectre_fft(sommation)
-    
-    def update_roi(self):
-        # print("updating roi")
-        image_roi = np.rot90(self.roi.getArrayRegion(self.current_frame, self.graphicsView))
-        self.graphicsView2.setImage(image_roi)
-        self.graphicsView2.autoRange()
-        self.update_graph_sum(image_roi)
-
-    def video_get_next_frame(self):
-        self.index_image_in_video += 1
-        return self.images_from_video[self.index_image_in_video]
-
-
     def update_frame(self):
         # print("begin update")
         if self.take_photo_cam:
@@ -199,6 +175,55 @@ class MainWindow(qt.QMainWindow):
             if ret:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # OpenCV uses BGR, PyQtGraph uses RGB
                 self.graphicsView2.setImage(np.rot90(frame))
+
+
+    def update_roi(self):
+        # print("updating roi")
+        image_roi = np.rot90(self.roi.getArrayRegion(self.current_frame, self.graphicsView))
+        self.graphicsView2.setImage(image_roi)
+        self.graphicsView2.autoRange()
+        self.update_graph_sum(image_roi)
+
+    def update_graph_sum(self, image_roi):
+        # print(image_roi.shape)
+        if len(image_roi.shape) == 3: # image en couleur
+            sommation = np.sum(image_roi[:, :, 0], axis=1)
+        else:
+            sommation = np.sum(image_roi, axis=1)
+        # print(sommation.shape)
+        self.plotView2.clear()
+        self.plotView2.plot(sommation)
+        self.update_graph_spectre_fft(sommation)
+
+    def update_graph_spectre_fft(self, image_sommee):
+        # on fait d'abord la fft
+        freq = np.fft.fftfreq(image_sommee.shape[0])
+        sp = np.fft.fft(image_sommee)[freq >= 0]
+        freq = freq[freq >= 0]
+        
+        # affichage du module de la fft
+        self.plotFourier.clear()
+        self.plotFourier.setData(y=np.abs(sp))
+
+        # affichage de la phase de la fft
+        pic_position = int(self.cursor.value())
+        # print(pic_position)
+        phase = np.angle(sp[pic_position])
+        if len(self.phase_vector) == 0:
+            self.phase_vector.append(phase)
+        else:
+            self.phase_vector.append(np.unwrap([self.phase_vector[-1], phase])[-1])  # l'opération unwrap permet d'éviter les "sauts de phases entre +pi et -pi"
+        self.plotView4.clear()
+        self.plotView4.plot(self.phase_vector)
+
+    
+
+    def video_get_next_frame(self):
+        self.index_image_in_video += 1
+        return self.images_from_video[self.index_image_in_video]
+
+
+    
 
 
 
