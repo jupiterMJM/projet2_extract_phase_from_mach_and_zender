@@ -4,6 +4,13 @@ programme permettant la configuration de l'extraction de la phase via interféro
 :date: 26/02
 :comment: ce programme a pour but d'etre utilisé en production; mais n'est pas censé être appelé
     par un programme maitre
+TODO: mieux gérer less fichiers hdf5 - en particulier ne pas tout charger en mémoire comme un bourrin
+TODO: régler le problème de la caméra zelux
+TODO: enregistrer les paramètres de la ROI
+TODO: utiliser la ROI pour accélérer les prises des photos de la zelux
+TODO: placer un axe de lecture de la phase - et ajouter le graphe de la phase
+TODO: utiliser les docker (cf prg de rafael)
+TODO: configurer les boutons de lancement d'enregistrement, d'arret et de sauvegarde
 """
 
 
@@ -19,6 +26,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
 import cv2
+import h5py
 print("[INFO] Modules importés avec succès")
 
 
@@ -35,6 +43,7 @@ class MainWindow(qt.QMainWindow):
 
         self.setupUI()
         self.take_photo_cam = True
+        self.what_to_use_for_picture = "camera"         # choisir entre camera et video
         # Initialize webcam
         print("[INFO] Recherche des caméras disponibles")
         ad_serial = Thorlabs.list_cameras_tlcam()  # affiche normalement la liste des caméras connectées
@@ -112,6 +121,7 @@ class MainWindow(qt.QMainWindow):
 
     def config_video(self):
         print("[INFO] Sélection d'une vidéo ou d'un fichier h5 comme outil de travail")
+        self.what_to_use_for_picture = "video"
         self.take_photo_cam = False
         dlg = qt.QFileDialog()
         dlg.setFileMode(qt.QFileDialog.AnyFile)
@@ -121,9 +131,16 @@ class MainWindow(qt.QMainWindow):
             filenames = dlg.selectedFiles()
             if len(filenames) > 1:
                 print("[WARNING] Un seul fichier maximum")
-                filenames = self.config_video()
+                self.what_to_use_for_picture = "camera"
+            else:
+                with h5py.File(filenames[0], 'r') as file:
+                    self.images_from_video = np.array(file['RawData/Scan000/Detector001/Data2D/CH00/EnlData00'])
+                    self.index_image_in_video = -1      # oui, oui c'est bien -1
+                    print("[INFO] Images extraites avec succès")
+                    print("taille", self.images_from_video.shape, type(self.images_from_video))
+        
         self.take_photo_cam = True
-        return filenames
+        
 
     def update_graph_spectre_fft(self, image_sommee):
         # on fait d'abord la fft
@@ -154,16 +171,25 @@ class MainWindow(qt.QMainWindow):
         self.graphicsView2.autoRange()
         self.update_graph_sum(image_roi)
 
+    def video_get_next_frame(self):
+        self.index_image_in_video += 1
+        return self.images_from_video[self.index_image_in_video]
+
 
     def update_frame(self):
         # print("begin update")
         if self.take_photo_cam:
-            if self.cam_zelux:
-                self.current_frame = np.rot90(self.cam.snap())
+            if self.what_to_use_for_picture == "camera":
+                if self.cam_zelux:
+                    self.current_frame = np.rot90(self.cam.snap())
+                else:
+                    ret, self.current_frame = self.cam.read()
+                    # print('r', ret)
+                    self.current_frame = np.rot90(np.rot90(np.rot90(cv2.cvtColor(self.current_frame, cv2.COLOR_BGR2RGB))))
+            elif self.what_to_use_for_picture == "video":
+                self.current_frame = self.video_get_next_frame()
             else:
-                ret, self.current_frame = self.cam.read()
-                # print('r', ret)
-                self.current_frame = np.rot90(np.rot90(np.rot90(cv2.cvtColor(self.current_frame, cv2.COLOR_BGR2RGB))))
+                print("[ERROR] l'argument self.what_to_use_for_picture n'est pas reconnu pas le programme")
             self.graphicsView.setImage(self.current_frame)
             self.update_roi()
         # print("end update")
