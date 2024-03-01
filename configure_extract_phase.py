@@ -8,7 +8,6 @@ TODO: mieux gérer les fichiers hdf5 - en particulier ne pas tout charger en mé
 TODO: régler le problème de la caméra zelux
 TODO: enregistrer les paramètres de la ROI
 TODO: utiliser la ROI pour accélérer les prises des photos de la zelux
-TODO: placer un axe de lecture de la phase - et ajouter le graphe de la phase
 TODO: utiliser les docker (cf prg de rafael)
 TODO: configurer les boutons de lancement d'enregistrement, d'arret et de sauvegarde
 TODO: affichage d'un label indiquant la fréquence choisie par le cursor (et le domaine de couleur correspondant, approche un peu théorique à faire)
@@ -47,6 +46,9 @@ class MainWindow(qt.QMainWindow):
         self.take_photo_cam = True
         self.what_to_use_for_picture = "camera"         # choisir entre camera et video
         self.phase_vector = []
+        self.taille_des_blocs = 1000 # en images
+        self.image_from_hdf5_to_use = list()
+
         # Initialize webcam
         print("[INFO] Recherche des caméras disponibles")
         ad_serial = Thorlabs.list_cameras_tlcam()  # affiche normalement la liste des caméras connectées
@@ -136,6 +138,7 @@ class MainWindow(qt.QMainWindow):
         self.take_photo_cam = False
         dlg = qt.QFileDialog()
         dlg.setFileMode(qt.QFileDialog.AnyFile)
+        self.index_of_chunk = -1
 
             
         if dlg.exec_():
@@ -144,11 +147,15 @@ class MainWindow(qt.QMainWindow):
                 print("[WARNING] Un seul fichier maximum")
                 self.what_to_use_for_picture = "camera"
             else:
-                with h5py.File(filenames[0], 'r') as file:
-                    self.images_from_video = np.array(file['RawData/Scan000/Detector001/Data2D/CH00/EnlData00'])
-                    self.index_image_in_video = -1      # oui, oui c'est bien -1
-                    print("[INFO] Images extraites avec succès")
-                    print("taille", self.images_from_video.shape, type(self.images_from_video))
+                # le fait d'utiliser with ... as ... nous oblige à extraire TOUTES les données d'un coup.
+                # on décide donc de ne pas l'utiliser afin de ne pas saturer la mémoire
+                file = h5py.File(filenames[0], 'r')
+                self.huge_data_h5py = file['RawData/Scan000/Detector001/Data2D/CH00/EnlData00']
+                self.index_image_in_video = -1      # oui, oui c'est bien -1
+                # with h5py.File(filenames[0], 'r') as file:
+                #     self.images_from_video = np.array(file['RawData/Scan000/Detector001/Data2D/CH00/EnlData00'])
+                #     print("[INFO] Images extraites avec succès")
+                #     print("taille", self.images_from_video.shape, type(self.images_from_video))
         
         self.take_photo_cam = True
         
@@ -219,8 +226,21 @@ class MainWindow(qt.QMainWindow):
     
 
     def video_get_next_frame(self):
-        self.index_image_in_video += 1
-        return self.images_from_video[self.index_image_in_video]
+        """
+        :comment: à l'init: self.index_image_in_video = - 1
+                            self.infex_of_chunk = -1
+        """
+        self.index_image_in_video = (self.index_image_in_video + 1) % self.taille_des_blocs
+
+
+        # création des chunks à load en mémoire (on "découpe" les fichiers que l'on extrait)
+        if self.index_image_in_video == 0 and self.index_of_chunk*self.taille_des_blocs < len(self.huge_data_h5py):  # on doit créer un new chunk
+            self.index_of_chunk += 1
+            self.image_from_hdf5_to_use = self.huge_data_h5py[self.index_of_chunk * self.taille_des_blocs : min(len(self.huge_data_h5py), (self.index_of_chunk + 1)*self.taille_des_blocs)]
+
+
+        print(self.index_image_in_video)
+        return self.image_from_hdf5_to_use[self.index_image_in_video]
 
 
     
