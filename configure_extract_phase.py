@@ -4,14 +4,15 @@ programme permettant la configuration de l'extraction de la phase via interféro
 :date: 26/02
 :comment: ce programme a pour but d'etre utilisé en production; mais n'est pas censé être appelé
     par un programme maitre
-TODO: mieux gérer les fichiers hdf5 - en particulier ne pas tout charger en mémoire comme un bourrin
 TODO: régler le problème de la caméra zelux
 TODO: enregistrer les paramètres de la ROI
 TODO: utiliser la ROI pour accélérer les prises des photos de la zelux
 TODO: utiliser les docker (cf prg de rafael)
 TODO: configurer les boutons de lancement d'enregistrement, d'arret et de sauvegarde
-TODO: affichage d'un label indiquant la fréquence choisie par le cursor (et le domaine de couleur correspondant, approche un peu théorique à faire)
+TODO: affichage d'un label indiquant le delay associé
 TODO: commenter les fonctions!!!!
+TODO: mieux initialiser la ROI
+TODO: proposer une aide à la "verticalisation" de la ROI
 """
 
 
@@ -104,7 +105,8 @@ class MainWindow(qt.QMainWindow):
         grid.addWidget(self.plotView, 0, 0)
 
         # création de la ROI
-        self.roi = pg.LineROI([0, 60], [20, 80], width=5, pen="r")
+        self.roi = pg.RectROI([0, 60], [20, 80],pen = (0, 9))
+        self.roi.addRotateHandle([1, 0], [0.5, 0.5])
         self.plotView.addItem(self.roi)
         self.roi.sigRegionChanged.connect(self.update_roi)
 
@@ -186,7 +188,7 @@ class MainWindow(qt.QMainWindow):
 
     def update_roi(self):
         # print("updating roi")
-        image_roi = np.rot90(self.roi.getArrayRegion(self.current_frame, self.graphicsView))
+        image_roi = self.roi.getArrayRegion(self.current_frame, self.graphicsView)
         self.graphicsView2.setImage(image_roi)
         self.graphicsView2.autoRange()
         self.update_graph_sum(image_roi)
