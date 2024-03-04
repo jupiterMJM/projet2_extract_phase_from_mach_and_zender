@@ -5,6 +5,7 @@ programme permettant la configuration de l'extraction de la phase via interféro
 :comment: ce programme a pour but d'etre utilisé en production; mais n'est pas censé être appelé
     par un programme maitre
 TODO: régler le problème de la caméra zelux
+TODO: enregistrer les paramètres de la ROI
 TODO: utiliser la ROI pour accélérer les prises des photos de la zelux
 TODO: utiliser les docker (cf prg de rafael)
 TODO: configurer les boutons de lancement d'enregistrement, d'arret et de sauvegarde
@@ -27,8 +28,6 @@ from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
 import cv2
 import h5py
-import os
-import pickle
 print("[INFO] Modules importés avec succès")
 
 
@@ -88,19 +87,9 @@ class MainWindow(qt.QMainWindow):
         choix_source.addAction(video)
         video.triggered.connect(self.config_video)
         choix_source.addAction("Caméra")
-
         action = menuBar.addMenu('Action')
         action.addAction('Lancer Traitement')
-        get_roi = qt.QAction("Utiliser ROI sauvegardée", self)
-        action.addAction(get_roi)
-        get_roi.triggered.connect(self.get_roi_from_file)
-
-        sauvegarde = menuBar.addMenu('Sauvegarde')
-        sauvegarde.addAction('Sauvegarder Data')
-        save_roi = qt.QAction("Sauvegarder ROI", self)
-        sauvegarde.addAction(save_roi)
-        save_roi.triggered.connect(self.save_roi)
-        
+        action.addAction('Sauvegarder Data')
         
 
 
@@ -269,35 +258,10 @@ class MainWindow(qt.QMainWindow):
 
 
     def closeEvent(self, event):
-        if self.cam_zelux:  # si on utilise la caméra zelux
-            self.cam.close()
-        else:               # on utilise la caméra via cv2
-            self.cam.release()
+        self.cam.close()
         if use_webcam:
             self.cap.release()
         event.accept()
-
-
-    def save_roi(self):
-        print("[INFO] Sauvegarde de la ROI dans le fichier: ")
-        state = self.roi.saveState()
-        path_for_save = os.getcwd() + r'\ROI_do_not_erase'
-        print(path_for_save)
-        with open(path_for_save, 'wb') as f_save:
-            pickle.dump(state, f_save)
-        print("[INFO] ROI sauvegardée!")
-
-    def get_roi_from_file(self):
-        print("[INFO] Extraction de la ROI dans le fichier: ")
-        path_for_roi = os.getcwd() + r'\ROI_do_not_erase'
-        if os.path.isfile(path_for_roi):
-            with open(path_for_roi, 'rb') as f_roi:
-                state = pickle.load(f_roi)
-            print(state)
-            self.roi.setState(state)
-            print("[INFO] ROI mise à jour!")
-        else:
-            print("[ERROR] Le fichier demandé n'existe pas. Il faut refaire la ROI à la main.")
 
 if __name__ == "__main__":
     app = qt.QApplication(sys.argv)
