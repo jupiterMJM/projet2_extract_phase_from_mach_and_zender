@@ -11,7 +11,6 @@ TODO: utiliser les docker (cf prg de rafael)
 TODO: configurer les boutons de lancement d'enregistrement, d'arret et de sauvegarde
 TODO: affichage d'un label indiquant le delay associé
 TODO: commenter les fonctions!!!!
-TODO: mieux initialiser la ROI
 TODO: proposer une aide à la "verticalisation" de la ROI
 """
 
@@ -43,7 +42,6 @@ class MainWindow(qt.QMainWindow):
         """
         super().__init__()
 
-        self.setupUI()
         self.take_photo_cam = True
         self.what_to_use_for_picture = "camera"         # choisir entre camera et video
         self.phase_vector = []
@@ -66,6 +64,8 @@ class MainWindow(qt.QMainWindow):
 
         if use_webcam:
             self.cap = cv2.VideoCapture(0)
+
+        self.setupUI()
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update_frame)
         self.timer.start(30) 
@@ -105,7 +105,8 @@ class MainWindow(qt.QMainWindow):
         grid.addWidget(self.plotView, 0, 0)
 
         # création de la ROI
-        self.roi = pg.RectROI([0, 60], [20, 80],pen = (0, 9))
+        ex_image = self.take_photo_with_cam()
+        self.roi = pg.RectROI(pos = [(50+12.5)/100 * ex_image.shape[0], (50-37.5)/100 * ex_image.shape[1]], size = [75/100 * ex_image.shape[1], 25/100 * ex_image.shape[0]] ,angle = 90, pen = (0, 9))
         self.roi.addRotateHandle([1, 0], [0.5, 0.5])
         self.plotView.addItem(self.roi)
         self.roi.sigRegionChanged.connect(self.update_roi)
@@ -158,19 +159,25 @@ class MainWindow(qt.QMainWindow):
                 #     self.images_from_video = np.array(file['RawData/Scan000/Detector001/Data2D/CH00/EnlData00'])
                 #     print("[INFO] Images extraites avec succès")
                 #     print("taille", self.images_from_video.shape, type(self.images_from_video))
-        
+                ex_image = self.huge_data_h5py[0]
+                self.roi.setPos(pos = [(50+12.5)/100 * ex_image.shape[0], (50-37.5)/100 * ex_image.shape[1]])
+                self.roi.setSize(size = [75/100 * ex_image.shape[1], 25/100 * ex_image.shape[0]])
         self.take_photo_cam = True
         
+    def take_photo_with_cam(self):
+        if self.cam_zelux:
+            frame = np.rot90(self.cam.snap())
+        else:
+            ret, frame = self.cam.read()
+            # print('r', ret)
+            frame = np.rot90(np.rot90(np.rot90(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))))
+        return frame
+    
     def update_frame(self):
         # print("begin update")
         if self.take_photo_cam:
             if self.what_to_use_for_picture == "camera":
-                if self.cam_zelux:
-                    self.current_frame = np.rot90(self.cam.snap())
-                else:
-                    ret, self.current_frame = self.cam.read()
-                    # print('r', ret)
-                    self.current_frame = np.rot90(np.rot90(np.rot90(cv2.cvtColor(self.current_frame, cv2.COLOR_BGR2RGB))))
+                self.current_frame = self.take_photo_with_cam()
             elif self.what_to_use_for_picture == "video":
                 self.current_frame = self.video_get_next_frame()
             else:
@@ -184,6 +191,7 @@ class MainWindow(qt.QMainWindow):
             if ret:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # OpenCV uses BGR, PyQtGraph uses RGB
                 self.graphicsView2.setImage(np.rot90(frame))
+        
 
 
     def update_roi(self):
@@ -241,7 +249,7 @@ class MainWindow(qt.QMainWindow):
             self.image_from_hdf5_to_use = self.huge_data_h5py[self.index_of_chunk * self.taille_des_blocs : min(len(self.huge_data_h5py), (self.index_of_chunk + 1)*self.taille_des_blocs)]
 
 
-        print(self.index_image_in_video)
+        # print(self.index_image_in_video)
         return self.image_from_hdf5_to_use[self.index_image_in_video]
 
 
