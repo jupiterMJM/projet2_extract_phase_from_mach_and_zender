@@ -86,13 +86,14 @@ class TCPClient_all_in_one(TCPClientTemplate):
 if __name__ == '__main__':
     from threading import Thread
     from time import sleep
+
     tcpclient = TCPClient_all_in_one("localhost", 6341, "my_own_test")
     t = Thread(target=tcpclient.init_connection)
     t.start()
     sleep(1)
 
     for ind in range(10):
-        tcpclient.send_data_perso(np.sin(ind*.2))
+        tcpclient.send_data(np.sin(ind*.2))
         sleep(1)
 
         

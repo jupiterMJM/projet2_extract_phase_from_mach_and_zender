@@ -28,6 +28,10 @@ from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
 import cv2
 import h5py
+import os
+import pickle
+from connexion_tcpip_avec_pymodaq import *
+from threading import Thread                    # no worry, only used when setting up the connection to pymodaq
 print("[INFO] Modules importés avec succès")
 
 
@@ -43,6 +47,7 @@ class MainWindow(qt.QMainWindow):
         super().__init__()
 
         self.take_photo_cam = True
+        self.connection_set_up = False
         self.what_to_use_for_picture = "camera"         # choisir entre camera et video
         self.phase_vector = []
         self.taille_des_blocs = 1000 # en images
@@ -56,6 +61,7 @@ class MainWindow(qt.QMainWindow):
             print(f"[INFO] Adresses trouvées: {ad_serial}")
             self.cam = Thorlabs.ThorlabsTLCamera(serial=ad_serial[0])
             self.cam.set_exposure(10E-3)
+            self.cam.start_acquisition()
             print(f"[INFO] Caméra {ad_serial[0]} connectée")
         else:
             self.cam_zelux = False
@@ -68,7 +74,7 @@ class MainWindow(qt.QMainWindow):
         self.setupUI()
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update_frame)
-        self.timer.start(30) 
+         
 
     def setupUI(self):
         """
@@ -89,8 +95,15 @@ class MainWindow(qt.QMainWindow):
         choix_source.addAction("Caméra")
         action = menuBar.addMenu('Action')
         action.addAction('Lancer Traitement')
-        action.addAction('Sauvegarder Data')
-        
+        get_roi = qt.QAction("Utiliser ROI sauvegardée", self)
+        action.addAction(get_roi)
+        get_roi.triggered.connect(self.get_roi_from_file)
+
+        sauvegarde = menuBar.addMenu('Sauvegarde')
+        sauvegarde.addAction('Sauvegarder Data')
+        save_roi = qt.QAction("Sauvegarder ROI", self)
+        sauvegarde.addAction(save_roi)
+        save_roi.triggered.connect(self.save_roi)
 
 
         # Create a layout for the central widget
@@ -135,6 +148,25 @@ class MainWindow(qt.QMainWindow):
         self.plotView4 = pg.PlotWidget()
         grid.addWidget(self.plotView4, 1, 1)
 
+        # création des boutons en bas à droite de la page
+        groupBox = qt.QGroupBox("Boutons Utiles")
+        grid_for_box = qt.QVBoxLayout()
+        b1 = qt.QPushButton("Connexion à Pymodaq")
+        grid_for_box.addWidget(b1)
+        b1.clicked.connect(self.connect_to_pymodaq)
+        self.b1 = b1
+        
+        b2 = qt.QPushButton("Lancement acquisition")
+        grid_for_box.addWidget(b2)
+        b2.clicked.connect(self.launch_acquisition)
+        self.b2 = b2
+
+        b3 = qt.QPushButton("Sauvegarder les données")
+        grid_for_box.addWidget(b3)
+
+        groupBox.setLayout(grid_for_box)
+        grid.addWidget(groupBox, 2, 1)
+
     def config_video(self):
         print("[INFO] Sélection d'une vidéo ou d'un fichier h5 comme outil de travail")
         self.what_to_use_for_picture = "video"
@@ -166,7 +198,8 @@ class MainWindow(qt.QMainWindow):
         
     def take_photo_with_cam(self):
         if self.cam_zelux:
-            frame = np.rot90(self.cam.snap())
+            frame = self.cam.read_newest_image()
+            # frame = np.rot90(self.cam.snap())
         else:
             ret, frame = self.cam.read()
             # print('r', ret)
@@ -229,7 +262,10 @@ class MainWindow(qt.QMainWindow):
         if len(self.phase_vector) == 0:
             self.phase_vector.append(phase)
         else:
-            self.phase_vector.append(np.unwrap([self.phase_vector[-1], phase])[-1])  # l'opération unwrap permet d'éviter les "sauts de phases entre +pi et -pi"
+            phase = np.unwrap([self.phase_vector[-1], phase])[-1]
+            self.phase_vector.append(phase)  # l'opération unwrap permet d'éviter les "sauts de phases entre +pi et -pi"
+        if self.connection_set_up:
+            self.tcpclient.send_data(phase)
         self.plotView4.clear()
         self.plotView4.plot(self.phase_vector)
 
@@ -253,8 +289,44 @@ class MainWindow(qt.QMainWindow):
         return self.image_from_hdf5_to_use[self.index_image_in_video]
 
 
-    
+    def save_roi(self):
+        print("[INFO] Sauvegarde de la ROI dans le fichier: ")
+        state = self.roi.saveState()
+        path_for_save = os.getcwd() + r'\ROI_do_not_erase'
+        print(path_for_save)
+        with open(path_for_save, 'wb') as f_save:
+            pickle.dump(state, f_save)
+        print("[INFO] ROI sauvegardée!")
 
+    def get_roi_from_file(self):
+        print("[INFO] Extraction de la ROI dans le fichier: ")
+        path_for_roi = os.getcwd() + r'\ROI_do_not_erase'
+        if os.path.isfile(path_for_roi):
+            with open(path_for_roi, 'rb') as f_roi:
+                state = pickle.load(f_roi)
+            print(state)
+            self.roi.setState(state)
+            print("[INFO] ROI mise à jour!")
+        else:
+            print("[ERROR] Le fichier demandé n'existe pas. Il faut refaire la ROI à la main.")
+
+
+    def launch_acquisition(self):
+        if self.b2.text() == "Lancement acquisition":
+            self.timer.start(30)
+            self.b2.setText("Arrêt acquisition")
+        else:
+            self.timer.stop()
+            self.b2.setText("Lancement acquisition")
+
+    def connect_to_pymodaq(self):
+        print("[INFO] Connexion au serveur Pymodaq")
+        self.tcpclient = TCPClient_all_in_one("localhost", 6341, "GRABBER")
+        t = Thread(target=self.tcpclient.init_connection)
+        t.start()
+        self.connection_set_up = True
+        print("[INFO] Fonction de connexion éxécutée")
+        print("[WARNING] Attention, cela ne signifie pas que le programme est bien connecté en client au serveur Pymodaq")
 
 
     def closeEvent(self, event):
