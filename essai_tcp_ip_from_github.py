@@ -1,6 +1,13 @@
 """
 Minimal example of a TCP client connecting to a TCP server instrument class plugin (type 0D) and
 sending to it 0D data in a row representing a sinus.
+:comment: Program modified by Maxence BARRE to provide a single class to send the data in just one line.
+Provide better readability in the code.
+:comment: this program has not been tested deeply. Therefore it may not work for every configuration possible.
+:comment: be careful, it is not because this client sends data that the connection is well established. Sometimes,
+    the client "has the impression" of being connected but it is not!!!
+:comment: this example is based on the file you can find in the 4.2.x_dev github branch pymodaq>examples>tcp_client.py
+    however all the function that seem not to work have been removed
 
 To execute all this:
 
@@ -26,30 +33,31 @@ class TCPClient_all_in_one(TCPClientTemplate):
     You don't need to look at the encryption of the data. This class permits operations like
     my_tcp = TCPclient_all_in_one(my_ip, my_port)
     my_tcp.send_data(4) # plot 4 at the screen
-    my_tcp.close # close the connexion
+    my_tcp.close() # close the connexion
     :comment: for now, the program has only been tested (and works) in the following conditions:
         -> in localhost, this program as a client, and sends only 0D data
     :comment: to close a connexion, you just need to enter my_tcp.close(). this function inherits from the super class
     """
     def __init__(self, ipaddress="localhost", port=6341, client_type="GRABBER"):
-        print(ipaddress, port, client_type)
+        """
+        initiate the connexion with the server
+        :param: information for connexion to Pymodaq (Pymodaq is the server, this prg is the client)
+        :comment: idk if the client_type variable is just the name to print on the deck or does it have other uses
+            after some tests: the use of something else than "GRABBER" leads to error "[WinError 10053]"
+        :comment: be careful with the function super().__init__ the first arguments of the function are not ipadress, port, and client_type
+        """
+        print(f"[INFO] Connecting to {ipaddress} on port {port} as a {client_type}")
         super().__init__(ipaddress=ipaddress, port=port, client_type=client_type)      # init the connexion and says to pymodaq that the prg is a grabber
 
     def post_init(self, extra_commands=[]):
+        """
+        check if the connexion is well setup?
+        should not be used by the user?
+        """
         self.socket.check_sended_with_serializer(self.client_type)
 
 
-    def send_data(self, data: DataToExport):
-        print("funtion in use")
-        # first send 'Done' and then send the length of the list
-        if not isinstance(data, DataToExport):
-            raise TypeError(f'should send a DataToExport object')
-        if self.socket is not None:
-            self.socket.check_sended_with_serializer('Done')
-            self.socket.check_sended_with_serializer(data)
-
-
-    def send_data_perso(self, data: int | str | float | np.float_):
+    def send_data(self, data: int | str | float | np.float_):
         """
         the function you want to know
         :param: int | str | float: the type of the parameter in only due to the fact that other dimensions/type (such as np.array) has not been tested
@@ -64,64 +72,29 @@ class TCPClient_all_in_one(TCPClientTemplate):
             self.socket.check_sended_with_serializer('Done')
             self.socket.check_sended_with_serializer(dwa)
 
-    def ready_to_read(self):
-        message = self._deserializer.string_deserialization()
-        self.get_data(message)
-
-    def get_data(self, message: str):
-        """
-
-        Parameters
-        ----------
-        message
-
-        Returns
-        -------
-
-        """
-        if self.socket is not None:
-
-            if message == 'set_info':
-                path = self._deserializer.list_deserialization()
-                param_xml = self._deserializer.string_deserialization()
-                print(param_xml)
-
-            elif message == 'move_abs' or message == 'move_rel':
-                position = self._deserializer.dwa_deserialization()
-                print(f'Position is {position}')
-
-            else:
-                print(message)
-
-    def data_ready(self, data: DataToExport):
-        self.send_data(data)
-
-    def ready_to_write(self):
-        pass
-
-    def ready_with_error(self):
-        self.connected = False
 
     def process_error_in_polling(self, e: Exception):
+        """
+        the class should work with this function but it would give an error (notImplemented)
+        seems to be used as the very beginning and never after
+        should not be used by the user?
+        """
+        print("[INFO] Use of the function process_error_in_polling")
         print(e)
 
 
 if __name__ == '__main__':
     from threading import Thread
     from time import sleep
-    print("connecting")
-    tcpclient = TCPClient_all_in_one()
-    print("initializing")
+    tcpclient = TCPClient_all_in_one("localhost", 6341, "my_own_test")
     t = Thread(target=tcpclient.init_connection)
-    print("i am here")
     t.start()
-    print("connected")
-    sleep(5)
+    sleep(1)
 
-    for ind in range(100):
-        print("sending")
+    for ind in range(10):
         tcpclient.send_data_perso(np.sin(ind*.2))
         sleep(1)
+
         
 
     tcpclient.close()
