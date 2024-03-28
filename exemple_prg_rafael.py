@@ -70,7 +70,7 @@ else:
 
 
 roi=pg.RectROI(pos=pos_loaded,angle=angle_loaded,size=size_loaded,pen=(5,30))
-roi.addRotateHandle([1,0],[0.5,0.5])
+roi.addScaleRotateHandle([1,0],[0.5,0.5])
 # print(roi.pos())
 # print(roi.angle())
 print(roi.size())
