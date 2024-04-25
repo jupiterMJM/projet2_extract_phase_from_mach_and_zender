@@ -43,7 +43,7 @@ ift = ift.real  # Take only the real part
 plt.subplot(122)
 plt.imshow(ift)
 plt.title("Interférences extraites")
-plt.set_cmap("grey")
+plt.set_cmap("Greys")
 plt.xlim([750, 1000])
 plt.ylim([800, 400])
 plt.axline((900, 600), slope=-v/u)

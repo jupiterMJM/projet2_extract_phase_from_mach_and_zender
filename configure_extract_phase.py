@@ -12,7 +12,7 @@ TODO: configurer les boutons de lancement d'enregistrement, d'arret et de sauveg
 TODO: affichage d'un label indiquant le delay associé
 TODO: commenter les fonctions!!!!
 TODO: proposer une aide à la "verticalisation" de la ROI
-TODO: pouvoir changer le temps d'ouverture plus facilment
+TODO: pouvoir changer le temps d'ouverture plus facilement
 """
 
 
@@ -31,7 +31,7 @@ import cv2
 import h5py
 import os
 import pickle
-from connexion_tcpip_avec_pymodaq import *
+# from connexion_tcpip_avec_pymodaq import *
 from threading import Thread    # no worry, only used when setting up the connection to pymodaq
 import socket               
 print("[INFO] Modules importés avec succès")
@@ -47,7 +47,7 @@ class MainWindow(qt.QMainWindow):
         initialisation de la classe
         """
         super().__init__()
-
+        print("im here")
         self.take_photo_cam = True
         self.connection_set_up = False
         self.what_to_use_for_picture = "camera"         # choisir entre camera et video
@@ -62,7 +62,7 @@ class MainWindow(qt.QMainWindow):
             self.cam_zelux = True
             print(f"[INFO] Adresses trouvées: {ad_serial}")
             self.cam = Thorlabs.ThorlabsTLCamera(serial=ad_serial[0])
-            self.cam.set_exposure(0.1E-3)
+            self.cam.set_exposure(0.5E-3)
             self.cam.start_acquisition()
             print(f"[INFO] Caméra {ad_serial[0]} connectée")
         else:
@@ -83,7 +83,7 @@ class MainWindow(qt.QMainWindow):
         setup de la fenetre graphique
         """
         self.setWindowTitle("Webcam Viewer")
-
+        pg.setConfigOptions(antialias=True)
         # Create a central widget
         self.centralWidget = qt.QWidget()
         self.setCentralWidget(self.centralWidget)
@@ -107,13 +107,19 @@ class MainWindow(qt.QMainWindow):
         sauvegarde.addAction(save_roi)
         save_roi.triggered.connect(self.save_roi)
 
+        # config_roi = menuBar.addMenu("ROI")
+        # auto = qt.QAction("AutoConfig", self)
+        # config_roi.addAction(auto)
+        # auto.triggered.connect(self.auto_roi)
 
         # Create a layout for the central widget
         grid = qt.QGridLayout()
         self.centralWidget.setLayout(grid)
 
         # Create a graphics view widget to display the image
-        self.plotView = pg.PlotWidget()
+        self.plotView = pg.PlotWidget()             # Warning: le plotwidget est obligé pour pouvoir utiliser une roi par la suite
+        self.plotView.getAxis("bottom").setStyle(showValues=False)
+        self.plotView.getAxis("left").setStyle(showValues=False)
         self.graphicsView = pg.ImageItem()
         self.plotView.addItem(self.graphicsView)
         self.plotView.setAspectLocked()
@@ -136,6 +142,7 @@ class MainWindow(qt.QMainWindow):
         
         # plotting de la "somme"/moyenne de l'image
         self.plotView2 = pg.PlotWidget()
+        self.plotView2.setTitle("Somme sur la ROI")
         grid.addWidget(self.plotView2, 2, 0)
 
         # plotting du spectre de la fft
@@ -341,6 +348,11 @@ class MainWindow(qt.QMainWindow):
         print("[INFO] Fonction de connexion éxécutée")
         print("[WARNING] Attention, cela ne signifie pas que le programme est bien connecté en client au serveur Pymodaq")
 
+    # def auto_roi(self):
+    #     """
+    #     une aide à l'autoconfig du ROI
+    #     """
+    #     print("[INFO] AutoConfig de la ROI demandée")
 
     def closeEvent(self, event):
         self.cam.close()
