@@ -31,6 +31,7 @@ import cv2
 import h5py
 import os
 import pickle
+from histogramme_et_gestion_delay import * 
 # from connexion_tcpip_avec_pymodaq import *
 from threading import Thread    # no worry, only used when setting up the connection to pymodaq
 import socket               
@@ -62,6 +63,11 @@ class MainWindow(qt.QMainWindow):
             self.cam_zelux = True
             print(f"[INFO] Adresses trouvées: {ad_serial}")
             self.cam = Thorlabs.ThorlabsTLCamera(serial=ad_serial[0])
+
+            # reset the ROI
+            hlim, vlim = self.cam.get_roi_limits()
+            self.cam.set_roi(0, hlim.max, 0, vlim.max)
+
             self.cam.set_exposure(0.5E-3)
             self.cam.start_acquisition()
             print(f"[INFO] Caméra {ad_serial[0]} connectée")
@@ -100,6 +106,9 @@ class MainWindow(qt.QMainWindow):
         get_roi = qt.QAction("Utiliser ROI sauvegardée", self)
         action.addAction(get_roi)
         get_roi.triggered.connect(self.get_roi_from_file)
+        send_roi_action = qt.QAction("Send ROI to cam", self)
+        action.addAction(send_roi_action)
+        send_roi_action.triggered.connect(self.send_ROI_to_cam)
 
         sauvegarde = menuBar.addMenu('Sauvegarde')
         sauvegarde.addAction('Sauvegarder Data')
@@ -118,8 +127,8 @@ class MainWindow(qt.QMainWindow):
 
         # Create a graphics view widget to display the image
         self.plotView = pg.PlotWidget()             # Warning: le plotwidget est obligé pour pouvoir utiliser une roi par la suite
-        self.plotView.getAxis("bottom").setStyle(showValues=False)
-        self.plotView.getAxis("left").setStyle(showValues=False)
+        self.plotView.getAxis("bottom").setStyle(showValues=True)
+        self.plotView.getAxis("left").setStyle(showValues=True)
         self.graphicsView = pg.ImageItem()
         self.plotView.addItem(self.graphicsView)
         self.plotView.setAspectLocked()
@@ -131,6 +140,11 @@ class MainWindow(qt.QMainWindow):
         self.roi.addRotateHandle([1, 0], [0.5, 0.5])
         self.plotView.addItem(self.roi)
         self.roi.sigRegionChanged.connect(self.update_roi)
+
+        # test passager:
+        x_to_plot = (0, ex_image.shape[0], ex_image.shape[0], 0)
+        y_to_plot = (0, 0, ex_image.shape[1],ex_image.shape[1])
+        self.plotView.plot(x_to_plot, y_to_plot, color="green")
 
         # GUI pour l'affichage de la ROI
         self.graphicsView2 = pg.ImageView()
@@ -176,6 +190,9 @@ class MainWindow(qt.QMainWindow):
         groupBox.setLayout(grid_for_box)
         grid.addWidget(groupBox, 2, 1)
 
+        # a enlever!!!!!
+        self.plotView.plot((0, 50), (0, 100), color="red") 
+        
     def config_video(self):
         print("[INFO] Sélection d'une vidéo ou d'un fichier h5 comme outil de travail")
         self.what_to_use_for_picture = "video"
@@ -233,6 +250,9 @@ class MainWindow(qt.QMainWindow):
             if ret:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # OpenCV uses BGR, PyQtGraph uses RGB
                 self.graphicsView2.setImage(np.rot90(frame))
+
+        # print(self.current_frame.shape) 
+
         
 
 
@@ -328,9 +348,11 @@ class MainWindow(qt.QMainWindow):
         if self.b2.text() == "Lancement acquisition":
             self.timer.start(30)
             self.b2.setText("Arrêt acquisition")
+            self.w2 = FenetreHisto()
+            self.w2.show()
         else:
             self.timer.stop()
-            self.b2.setText("Lancement acquisition")
+            self.b2.setText("Lancement acquisition")    
 
     def connect_to_pymodaq(self):
         print("[INFO] Ouverture du serveur pour connexion du client Pymodaq")
@@ -348,11 +370,33 @@ class MainWindow(qt.QMainWindow):
         print("[INFO] Fonction de connexion éxécutée")
         print("[WARNING] Attention, cela ne signifie pas que le programme est bien connecté en client au serveur Pymodaq")
 
-    # def auto_roi(self):
-    #     """
-    #     une aide à l'autoconfig du ROI
-    #     """
-    #     print("[INFO] AutoConfig de la ROI demandée")
+    def send_ROI_to_cam(self):
+        # info_on_roi = self.roi.getState()
+        pos_x, pos_y = self.roi.pos()
+        angle = self.roi.angle()
+        size_x, size_y = self.roi.size()
+
+        # Calculate the corner coordinates
+        corner1 = [pos_x, pos_y]
+        corner2 = [pos_x + size_x * np.cos(np.radians(angle)), pos_y + size_x * np.sin(np.radians(angle))]
+        corner3 = [corner2[0] + size_y * np.cos(np.radians(angle + 90)), corner2[1] + size_y * np.sin(np.radians(angle + 90))]
+        corner4 = [corner1[0] + size_y * np.cos(np.radians(angle + 90)), corner1[1] + size_y * np.sin(np.radians(angle + 90))]
+
+        x_abs = [corner1[0], corner2[0],corner3[0], corner4[0]]
+        y_abs = [corner1[1], corner2[1],corner3[1], corner4[1]]
+        self.plotView.plot(x_abs, y_abs)  # to check if the corners calculated are the right corners
+        
+        x_bound_roi_to_cam = (min(x_abs), max(x_abs))
+        y_bound_roi_to_cam = (min(y_abs), max(y_abs))
+        # self.plotView.plot(x_bound_roi_to_cam, y_bound_roi_to_cam)
+
+        print("[INFO] Sending ROI info to cam")
+        self.cam.set_roi(vstart=min(x_abs), vend=max(x_abs), hstart=min(y_abs), hend=max(y_abs))  # bon ici c'est un peu bizarre, il faut echanger l'horizontal avec le vertical pour que ca fonctionne. pk jsp trop! tjrs est il que ca fonctionne!
+        
+        # il faut mtnt remettre la roi au bon endroit
+        print(size_x, size_y)
+        # self.roi.setAngle(90)
+        self.roi.setPos((np.sin(np.radians(angle)) * size_y, 0))
 
     def closeEvent(self, event):
         self.cam.close()
