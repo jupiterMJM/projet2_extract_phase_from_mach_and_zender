@@ -34,7 +34,8 @@ import pickle
 from histogramme_et_gestion_delay import * 
 # from connexion_tcpip_avec_pymodaq import *
 from threading import Thread    # no worry, only used when setting up the connection to pymodaq
-import socket               
+import socket              
+from collections import deque 
 print("[INFO] Modules importés avec succès")
 
 
@@ -52,9 +53,10 @@ class MainWindow(qt.QMainWindow):
         self.take_photo_cam = True
         self.connection_set_up = False
         self.what_to_use_for_picture = "camera"         # choisir entre camera et video
-        self.phase_vector = []
+        self.phase_vector = deque(maxlen=100)           # changer le paramètre maxlen pour augmenter le nombre de données affichées
         self.taille_des_blocs = 1000 # en images
         self.image_from_hdf5_to_use = list()
+        self.histo_phase_sent_to_pymodaq = monHisto(borne_inf=-8, borne_sup=8, nb_bin=40, largeur_bin=None)
 
         # Initialize webcam
         print("[INFO] Recherche des caméras disponibles")
@@ -288,6 +290,7 @@ class MainWindow(qt.QMainWindow):
         pic_position = int(self.cursor.value())
         # print(pic_position)
         phase = np.angle(sp[pic_position])
+        self.histo_phase_sent_to_pymodaq.append(phase)
         if len(self.phase_vector) == 0:
             self.phase_vector.append(phase)
         else:
@@ -297,7 +300,11 @@ class MainWindow(qt.QMainWindow):
             # print("[INFO] J'essaye d'envoyer qch:", phase, type(phase))
             to_send = str(phase) + ";"
             self.client.send(str(to_send).encode())
-                
+        
+        if self.histo_phase_sent_to_pymodaq.shape() % 10 == 0:
+            print("asking for renew histo")
+            self.w2.update_histo(histo=self.histo_phase_sent_to_pymodaq)
+        
 
         self.plotView4.clear()
         self.plotView4.plot(self.phase_vector)
@@ -348,7 +355,7 @@ class MainWindow(qt.QMainWindow):
         if self.b2.text() == "Lancement acquisition":
             self.timer.start(30)
             self.b2.setText("Arrêt acquisition")
-            self.w2 = FenetreHisto()
+            self.w2 = FenetreHisto(self.histo_phase_sent_to_pymodaq)
             self.w2.show()
         else:
             self.timer.stop()
