@@ -406,9 +406,10 @@ class MainWindow(qt.QMainWindow):
         self.roi.setPos((np.sin(np.radians(angle)) * size_y, 0))
 
     def closeEvent(self, event):
-        self.cam.close()
-        if use_webcam:
+        if not self.cam_zelux:
             self.cap.release()
+        else:
+            self.cam.close()
         event.accept()
 
 if __name__ == "__main__":
